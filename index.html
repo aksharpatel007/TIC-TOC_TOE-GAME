@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tic Toc Tic - 3D Game</title>
+  <style>
+    :root {
+      --clr-bg: #1c1c1c;
+      --clr-text: #ffffff;
+      --clr-main: #00b894;
+      --clr-cell-bg: #333;
+      --clr-shadow: #000;
+    }
+
+    body.light {
+      --clr-bg: #ffffff;
+      --clr-text: #111111;
+      --clr-main: #0984e3;
+      --clr-cell-bg: #ddd;
+      --clr-shadow: #bbb;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: 'Segoe UI', sans-serif;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    body {
+      margin: 0;
+      background: var(--clr-bg);
+      color: var(--clr-text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 20px;
+      padding: 20px;
+      text-align: center;
+    }
+
+    .active {
+      display: flex;
+    }
+
+    button {
+      padding: 10px 20px;
+      background: var(--clr-main);
+      border: none;
+      color: white;
+      font-size: 1rem;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      opacity: 0.9;
+    }
+
+    .toggle-theme {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      background: var(--clr-main);
+      color: white;
+      padding: 5px 10px;
+      border: none;
+      border-radius: 20px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      z-index: 1001;
+    }
+
+    input {
+      padding: 10px;
+      margin-top: 10px;
+      border-radius: 10px;
+      border: none;
+      font-size: 1rem;
+      width: 200px;
+      color: var(--clr-text);
+      background: var(--clr-cell-bg);
+    }
+
+    .board {
+      display: grid;
+      grid-template-columns: repeat(3, 100px);
+      gap: 10px;
+      perspective: 1000px;
+    }
+
+    .cell {
+      width: 100px;
+      height: 100px;
+      background: var(--clr-cell-bg);
+      border-radius: 10px;
+      box-shadow: 5px 5px 15px var(--clr-shadow) inset;
+      font-size: 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transform: rotateX(15deg);
+    }
+
+    .cell.x {
+      color: #ff7675;
+    }
+
+    .cell.o {
+      color: #00cec9;
+    }
+
+    .win-screen {
+      font-size: 2rem;
+      animation: pop 1s ease-in-out infinite alternate;
+    }
+
+    @keyframes pop {
+      from {
+        transform: scale(1);
+        opacity: 1;
+      }
+
+      to {
+        transform: scale(1.1);
+        opacity: 0.85;
+      }
+    }
+
+    #popup {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #popupContent {
+      background: #222;
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      text-align: center;
+      max-width: 300px;
+    }
+
+    #popupContent button {
+      margin-top: 10px;
+      background-color: var(--clr-main);
+    }
+  </style>
+</head>
+
+<body class="dark">
+  <button class="toggle-theme" onclick="switchTheme()">Toggle Theme</button>
+
+  <div id="home" class="screen active">
+    <h1>Tic Toc Tic</h1>
+    <button onclick="chooseMode('friend')">Play with Friend</button>
+    <button onclick="chooseMode('robot')">Play with Robot</button>
+  </div>
+
+  <div id="setup" class="screen">
+    <h2 id="setupTitle"></h2>
+    <div id="inputFields"></div>
+    <button onclick="launchGame()">Start Game</button>
+  </div>
+
+  <div id="game" class="screen">
+    <h2 id="statusText"></h2>
+    <div class="board" id="gameBoard"></div>
+    <button onclick="resetGame()">Restart Game</button>
+  </div>
+
+  <div id="winScreen" class="screen">
+    <div class="win-screen" id="resultMessage"></div>
+    <button onclick="advanceRound()">Next Round</button>
+  </div>
+
+  <div id="popup">
+    <div id="popupContent">
+      <p id="popupText"></p>
+      <button onclick="hidePopup()">OK</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+  <script>
+    const screens = {
+      home: document.getElementById('home'),
+      setup: document.getElementById('setup'),
+      game: document.getElementById('game'),
+      win: document.getElementById('winScreen'),
+    };
+
+    const labels = {
+      status: document.getElementById('statusText'),
+      result: document.getElementById('resultMessage'),
+      title: document.getElementById('setupTitle'),
+    };
+
+    const inputArea = document.getElementById('inputFields');
+    const board = document.getElementById('gameBoard');
+
+    let playMode = '';
+    let p1 = '';
+    let p2 = '';
+    let totalRounds = 1;
+    let round = 1;
+    let scoreboard = { X: 0, O: 0 };
+    let symbol = 'X';
+    let grid = [];
+
+    function switchTheme() {
+      document.body.classList.toggle('light');
+    }
+
+    function chooseMode(selected) {
+      playMode = selected;
+      screens.home.classList.remove('active');
+      screens.setup.classList.add('active');
+      labels.title.textContent = selected === 'friend' ? 'Friend Mode Setup' : 'Robot Mode Setup';
+      inputArea.innerHTML = selected === 'friend'
+        ? `<input id="p1" placeholder="Player 1 Name" />
+           <input id="p2" placeholder="Player 2 Name" />
+           <input id="rounds" type="number" placeholder="Number of Rounds" />`
+        : `<input id="p1" placeholder="Your Name" />
+           <input id="rounds" type="number" placeholder="Number of Rounds" />`;
+    }
+
+    function launchGame() {
+      const name1 = document.getElementById('p1').value.trim();
+      const name2 = playMode === 'friend' ? document.getElementById('p2').value.trim() : 'Robot';
+      const roundsValue = parseInt(document.getElementById('rounds').value);
+
+      if (!name1 || (playMode === 'friend' && !name2)) {
+        displayPopup("Please enter valid names.");
+        return;
+      }
+      if (isNaN(roundsValue) || roundsValue < 1) {
+        displayPopup("Please enter a valid number of rounds.");
+        return;
+      }
+
+      p1 = name1;
+      p2 = name2;
+      totalRounds = roundsValue;
+      round = 1;
+      scoreboard = { X: 0, O: 0 };
+      screens.setup.classList.remove('active');
+      screens.game.classList.add('active');
+      symbol = 'X';
+      renderBoard();
+    }
+
+    function renderBoard() {
+      board.innerHTML = '';
+      grid = Array(9).fill('');
+      for (let i = 0; i < 9; i++) {
+        const tile = document.createElement('div');
+        tile.className = 'cell';
+        tile.dataset.index = i;
+        tile.onclick = () => makeMove(i);
+        board.appendChild(tile);
+      }
+      updateTurnText();
+    }
+
+    function makeMove(i) {
+      if (grid[i] !== '') return;
+      grid[i] = symbol;
+      board.children[i].textContent = symbol;
+      board.children[i].classList.add(symbol.toLowerCase());
+
+      if (checkWin(symbol)) {
+        scoreboard[symbol]++;
+        showResult(`${symbol === 'X' ? p1 : p2} wins this round!`);
+      } else if (grid.every(cell => cell)) {
+        showResult("It's a draw!");
+      } else {
+        symbol = symbol === 'X' ? 'O' : 'X';
+        updateTurnText();
+        if (playMode === 'robot' && symbol === 'O') makeRobotPlay();
+      }
+    }
+
+    function makeRobotPlay() {
+      setTimeout(() => {
+        const emptyCells = grid.map((v, i) => v === '' ? i : null).filter(v => v !== null);
+        const randMove = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+        makeMove(randMove);
+      }, 500);
+    }
+
+    function checkWin(s) {
+      const lines = [
+        [0, 1, 2], [3, 4, 5], [6, 7, 8],
+        [0, 3, 6], [1, 4, 7], [2, 5, 8],
+        [0, 4, 8], [2, 4, 6]
+      ];
+      return lines.some(set => set.every(i => grid[i] === s));
+    }
+
+    function showResult(msg) {
+      screens.game.classList.remove('active');
+      screens.win.classList.add('active');
+      labels.result.textContent = msg;
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+    }
+
+    function advanceRound() {
+      if (labels.result.textContent === "It's a draw!" && round === totalRounds) totalRounds++;
+      round++;
+      if (round > totalRounds) {
+        let final = scoreboard.X === scoreboard.O
+          ? "Game ends in tie!"
+          : (scoreboard.X > scoreboard.O ? `${p1} wins the game!` : `${p2} wins the game!`);
+        labels.result.textContent = final;
+        setTimeout(() => {
+          screens.win.classList.remove('active');
+          screens.home.classList.add('active');
+        }, 2500);
+      } else {
+        screens.win.classList.remove('active');
+        screens.game.classList.add('active');
+        symbol = 'X';
+        renderBoard();
+      }
+    }
+
+    function updateTurnText() {
+      labels.status.textContent = `Round ${round}/${totalRounds} - ${symbol === 'X' ? p1 : p2}'s turn`;
+    }
+
+    function resetGame() {
+      location.reload();
+    }
+
+    function displayPopup(msg) {
+      document.getElementById('popupText').textContent = msg;
+      document.getElementById('popup').style.display = 'flex';
+    }
+
+    function hidePopup() {
+      document.getElementById('popup').style.display = 'none';
+    }
+  </script>
+</body>
+
+</html>
